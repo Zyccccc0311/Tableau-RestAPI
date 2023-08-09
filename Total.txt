@@ -1,0 +1,110 @@
+import jwt,datetime,uuid,requests
+import xml.etree.ElementTree as ET
+import re
+import getpass
+
+# Tableau Server上的用户名
+user_name = 'admin' 
+
+# 在Tableau Server上创建连接的应用时获取的客户端IP，SecretID和SecretKey
+connectedAppClientId = '1453bced-6de8-4ea9-9d08-9e4e0ef9f2d7'  #替换为正确的客户端ID
+connectedAppSecretId = 'e1181cbf-ebf6-4ea5-94c2-0de9c8e7659d'  #替换为正确的secret_id
+connectedAppSecretKey ='XtfB7wk7tit5RRycdag2FHxtflh+bzn4jNzJ2T0eo5I='#替换为正确的secret_key
+
+
+token = jwt.encode(
+    {
+        "iss": connectedAppClientId,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=5),
+        "jti": str(uuid.uuid4()),
+        "aud": "tableau",
+        "sub": user_name,
+        "scp": ['tableau:workbooks:download', 'tableau:datasources:download']#],
+    },
+    connectedAppSecretKey,
+    algorithm="HS256",
+    headers={
+        'kid': connectedAppSecretId,
+        'iss': connectedAppClientId
+    }
+)
+
+print("--------------------------------token--------------------------------")
+print(token)
+
+server = 'http://win-nc0gjlgvtt5'
+api_version = '3.19'
+site_name = 'Test'
+
+taburl = server+"/api/{0}/auth/signin".format(api_version)
+
+print("--------------------------------taburl--------------------------------")
+print(taburl)
+
+#request_body ={"credentials": {"jwt":token,"site": {"contentUrl": "Test"}}} 
+
+
+# request_body = """
+# <tsRequest>
+#    <credentials jwt="{jwt}">
+#     <site contentUrl="{content_url}"/>
+#    </credentials>
+# </tsRequest>
+# """.format(jwt=token, content_url="Test")
+
+
+xml_request = ET.Element('tsRequest')
+credentials_element = ET.SubElement(xml_request, 'credentials', name="admin", password="admin")
+ET.SubElement(credentials_element, 'site', contentUrl="Test")
+xml_request = ET.tostring(xml_request)
+
+print("--------------------------------xml_request--------------------------------")
+print(xml_request)
+
+response = requests.post(url=taburl,data=xml_request,headers={'Accept': 'application/json'})
+
+
+if response.status_code == 200:
+    print("\n**********登录成功**********\n")
+
+print("--------------------------------response.content--------------------------------")
+print(response.text)
+
+
+response_text = response.json()
+credentials_token = response_text.get('credentials').get('token')
+site_id = response_text.get('credentials').get('site').get('id')
+user_id=response_text.get('credentials').get('user').get('id')
+print("--------------------------------credentials_token--------------------------------")
+print(credentials_token)
+print("--------------------------------site_id--------------------------------")
+print(site_id)
+print("--------------------------------user_id--------------------------------")
+print(user_id)
+
+
+workbook_id="2"
+# 构建下载workbook的URL，并发送GET请求来获取workbook的下载链接
+url = server + "/api/{0}/sites/{1}/workbooks/{2}".format(api_version, site_id, workbook_id)
+print("--------------------------------download_url--------------------------------")
+print(url)
+
+header1 = {
+    "X-Tableau-Auth": credentials_token,
+    "name":"admin",
+    "password":"admin"
+}
+
+# 发送GET请求并下载workbook
+download_response = requests.get(url, headers=header1)
+
+if response.status_code==200:
+    print("\n**********访问成功**********\n")
+
+print(download_response.content)
+
+# filename = re.findall(r'filename="(.*)"', download_response.headers['Content-Disposition'])[0]
+# with open(filename, 'wb') as f:
+#     f.write(download_response.content)
+# print(filename)
+
